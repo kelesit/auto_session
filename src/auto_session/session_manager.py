@@ -115,7 +115,8 @@ class SessionManager:
         self.db.add(new_message)
 
         session.message_count += 1
-        session.last_activity = datetime.now()
+        session.last_activity = message.sent_at
+        session.state = SessionState.ACTIVE
 
         self.db.commit()
         return True
@@ -142,7 +143,8 @@ class SessionManager:
         session.created_by = new_owner
 
         if new_owner == "human":
-            session.state = SessionState.MANUAL
+            session.state = SessionState.TRANSFERRED
+            session.transferred_at = datetime.now()
         else:
             session.state = SessionState.ACTIVE
 
@@ -191,7 +193,7 @@ class SessionManager:
             .filter(
                 DBSession.account_id == account_id,
                 DBSession.shop_id == shop_id,
-                DBSession.state.in_([SessionState.ACTIVE]),
+                DBSession.state.in_([SessionState.ACTIVE, SessionState.TRANSFERRED]),
             )
             .order_by(DBSession.last_activity.desc())
             .first()
@@ -202,7 +204,7 @@ class SessionManager:
         完成该账号-店铺组合下的所有现有活跃会话
         确保只有一个活跃会话的约束
         """
-        active_states = [SessionState.ACTIVE]
+        active_states = [SessionState.ACTIVE, SessionState.TRANSFERRED]
         existing_sessions = (
             self.db.query(DBSession)
             .filter(
@@ -241,7 +243,7 @@ def create_session_manager(db_session: Session) -> SessionManager:
     return SessionManager(db_session)
 
 
-def ensure_account_exists(db_session: Session, account_id: str, account_name: str):
+def ensure_account_exists(db_session: Session, account_id: str, account_name: str, platform: str = "default"):
     """确保账号存在"""
     existing = (
         db_session.query(DBAccount)
@@ -254,6 +256,7 @@ def ensure_account_exists(db_session: Session, account_id: str, account_name: st
             account_name=account_name,
             is_active=True,
             created_at=datetime.now(),
+            platform=platform,  # 默认平台
         )
         db_session.add(account)
         db_session.commit()

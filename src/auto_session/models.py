@@ -69,7 +69,7 @@ class SessionInfo:
     task_type: TaskType
     state: SessionState
     created_by: str  # "robot" or "human"
-    priority: int
+    priority: int = 3
     external_task_id: Optional[str] = None
     message_count: int = 0
     created_at: Optional[datetime] = None
