@@ -2,6 +2,7 @@
 创建数据库表脚本
 基于设计文档创建完整的表结构
 """
+from sqlalchemy import create_engine, text
 
 from auto_session.database import Base, create_database_url, get_engine
 
@@ -69,9 +70,58 @@ def recreate_all_tables():
         engine.dispose()
 
 
+def upgrade_existing_database():
+    """为现有数据库添加 unique 约束和索引"""
+    
+    database_url = create_database_url()
+    engine = get_engine(database_url)
+    
+    try:
+        with engine.connect() as conn:
+            # 添加索引
+            result = conn.execute(text("""
+                SELECT shop_name, COUNT(*) as count 
+                FROM shops 
+                GROUP BY shop_name 
+                HAVING COUNT(*) > 1
+            """))
+
+            duplicates = result.fetchall()
+            if duplicates:
+                print("⚠️  发现重复的店铺名称：")
+                for row in duplicates:
+                    print(f"  - '{row[0]}' 出现 {row[1]} 次")
+                
+                print("\n请先处理重复数据，然后再运行此脚本。")
+                return False
+            
+            # 添加唯一约束
+            print("添加 shop_name 的唯一约束...")
+            conn.execute(text("ALTER TABLE shops ADD CONSTRAINT uk_shop_name UNIQUE (shop_name)"))
+            
+            try:
+                conn.execute(text("CREATE INDEX idx_shop_name ON shops(shop_name)"))
+            except Exception as e:
+                if "already exists" in str(e).lower():
+                    print("索引已存在，跳过...")
+                else:
+                    raise
+            
+            conn.commit()
+            print("✅ 唯一约束和索引添加成功！")
+            return True
+    except Exception as e:
+        print(f"升级数据库失败: {e}")
+        return False
+    finally:
+        engine.dispose()
+
+
+
 if __name__ == "__main__":
-    success = recreate_all_tables()
-    if success:
-        print("\n✅ 脚本执行成功，数据库表创建完毕！")
-    else:
-        print("\n❌ 脚本执行失败，请检查错误信息。")
+    upgrade_existing_database()
+    # success = recreate_all_tables()
+    # if success:
+    #     print("\n✅ 脚本执行成功，数据库表创建完毕！")
+    # else:
+    #     print("\n❌ 脚本执行失败，请检查错误信息。")

@@ -51,6 +51,7 @@ def test_basic_session_creation():
         message_id=f"msg_{uuid.uuid4().hex[:8]}",
         content="你好，我想咨询一下产品",
         from_source="shop",
+        sender='模拟测试人员',
         sent_at=datetime.now()
     )
     
@@ -101,6 +102,7 @@ def test_session_timeout():
         message_id=f"msg_old_{uuid.uuid4().hex[:8]}",
         content="这是很久之前的消息",
         from_source="shop",
+        sender='模拟测试人员2',
         sent_at=datetime.now() - timedelta(hours=2)  # 2小时前
     )
     
@@ -111,6 +113,7 @@ def test_session_timeout():
         message_id=f"msg_new_{uuid.uuid4().hex[:8]}",
         content="这是新消息",
         from_source="shop",
+        sender='模拟测试人员2',
         sent_at=datetime.now()
     )
     
@@ -257,6 +260,7 @@ def test_concurrent_sessions():
             message_id=f"msg_{session_id}_{uuid.uuid4().hex[:8]}",
             content=f"测试消息 for {session_id}",
             from_source="shop",
+            sender='模拟测试人员2',
             sent_at=datetime.now()
         )
         
@@ -284,6 +288,7 @@ def test_edge_cases():
         message_id=f"msg_{uuid.uuid4().hex[:8]}",
         content="测试消息",
         from_source="shop",
+        sender='模拟测试人员2',
         sent_at=datetime.now()
     )
     
@@ -306,6 +311,7 @@ def test_edge_cases():
         message_id=f"empty_msg_{uuid.uuid4().hex[:8]}",
         content="",
         from_source="shop",
+        sender='模拟测试人员2',
         sent_at=datetime.now()
     )
     
@@ -320,6 +326,7 @@ def test_edge_cases():
         message_id=f"long_msg_{uuid.uuid4().hex[:8]}",
         content=long_content,
         from_source="shop",
+        sender='模拟测试人员2',
         sent_at=datetime.now()
     )
     
@@ -333,6 +340,7 @@ def test_edge_cases():
         message_id=f"future_msg_{uuid.uuid4().hex[:8]}",
         content="未来的消息",
         from_source="shop",
+        sender='模拟测试人员2',
         sent_at=datetime.now() + timedelta(hours=1)
     )
     
@@ -381,6 +389,7 @@ def test_performance():
             message_id=f"perf_msg_{i}_{uuid.uuid4().hex[:8]}",
             content=f"性能测试消息 {i}",
             from_source="shop" if i % 2 == 0 else "account",
+            sender='模拟测试人员2',
             sent_at=datetime.now() + timedelta(seconds=i)
         )
         

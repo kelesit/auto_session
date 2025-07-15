@@ -54,7 +54,7 @@ class DBShop(Base):
     shop_id: Mapped[str] = mapped_column(
         String(50), unique=True, nullable=False, index=True
     )
-    shop_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    shop_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     # 关联关系    

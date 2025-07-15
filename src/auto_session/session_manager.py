@@ -6,12 +6,18 @@
 2. 判断某个店铺-账号组合是否可以创建新的机器人会话
 """
 
-
+from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from .database import DBAccount, DBMessage, DBSession, DBShop
-from .models import MessageData, SessionInfo, SessionState, TaskType
+from .models import MessageData, SessionInfo, SessionState, TaskType, ProcessResult
+from .tools import send_notification
+
+ACCOUNT_NICK_NAME_LIST = [
+    't-2217567810350-0',  # 示例账号昵称
+    # 可以添加更多账号昵称
+]
 
 class SessionManager:
     """会话管理器"""
@@ -19,11 +25,152 @@ class SessionManager:
     def __init__(self, db_session: Session):
         self.db = db_session
 
+    def process_message_batch(
+        self,
+        messages: list[MessageData],
+        account_id: str,
+        shop_id: Optional[str],
+        shop_name: str,
+        max_inactive_minutes: int = 30,
+    ):
+        """
+        批量处理消息 - 核心功能
+        Args:
+            messages: 消息列表
+            account_id: 账号ID
+            shop_id: 店铺ID
+            max_inactive_minutes: 最大非活跃时间（分钟）
+        Returns:
+            ProcessResult: 处理结果
+        """
+        result = ProcessResult()
+
+        try:
+            # 预处理消息，过滤掉无效或重复的消息
+            processed_messages = self._preprocess_messages(messages)
+            result.processed_messages = len(processed_messages)
+            result.skipped_messages = len(messages) - result.processed_messages
+
+
+            should_create, existing_session_id = self.should_create_new_session(
+                account_id, shop_id, processed_messages, max_inactive_minutes
+            )
+            if should_create:
+                # 创建新会话
+                session_id = self.create_session(
+                    SessionInfo(
+                        session_id=self._generate_session_id(),
+                        account_id=account_id,
+                        shop_id=shop_id,
+                        task_type=TaskType.MANUAL_URGENT,   # 会话类型为人工
+                        state=SessionState.TRANSFERRED,
+                        created_by="human",
+                        priority=1,  # 默认优先级
+                        message_count=len(processed_messages),
+                    )
+                )
+                result.active_session_id = session_id
+                print(f"✓ 创建新会话: {session_id}")
+                send_notification(messages, shop_id,shop_name, account_id)
+                print(f"发送通知给{account_id}")
+
+            else:
+                existing_session = self._get_session(existing_session_id)
+                if existing_session:
+                    # 添加消息到现有会话
+                    print(f"添加消息到现有会话: {existing_session_id}")
+                    for msg in processed_messages:
+                        self.add_message_to_session(existing_session.session_id, msg)
+
+                    # 更新会话状态和统计信息
+                    existing_session.message_count += len(processed_messages)
+                    existing_session.last_activity = datetime.now()
+                    result.active_session_id = existing_session.session_id
+
+                    if existing_session.state == SessionState.TRANSFERRED:
+                        # 如果现有会话是人工处理状态
+                        send_notification(messages, shop_id,shop_name, account_id)
+                        print(f"发送通知给{account_id}")
+                        result.session_operations = ["加入现有的人工会话"]
+
+                    else:
+                        # 如果是机器人会话(ACTIVE状态)
+                        # 解析消息，判断是否有人工介入
+                        if self._check_human_intervention(processed_messages, existing_session.account_id):
+                            print(f"✓ 检测到人工介入，转交会话: {existing_session_id}")
+                            if not self.switch_session_control(
+                                existing_session.session_id, "human", "检测到人工介入"
+                            ):
+                                # 转交失败
+                                result.errors = [f"会话{existing_session.session_id}转人工失败"]
+                            else:
+                                result.session_operations = ["转交给人工处理"]
+                                send_notification(messages, shop_id,shop_name, account_id)
+                                print(f"发送通知给{account_id}")
+
+                        else:
+                            # 没有人工介入，继续处理机器人任务
+                            print(f"✓ 继续处理机器人会话: {existing_session_id}")
+                            result.session_operations = ["继续处理机器人会话"]
+
+                else:
+                    result.errors = [f"无法找到现有会话: {existing_session_id}"]
+                    print(f"错误: 无法找到现有会话: {existing_session_id}")
+            return result
+        except Exception as e:
+            result.errors = [str(e)]
+            print(f"处理消息批次失败: {e}")
+            return result
+
+
+
+    def _check_human_intervention(self, messages: List[MessageData], account_id) -> bool:
+        """检查是否有人工介入的消息
+        检查账号的消息中是否有来自人工的消息
+        账号发的消息 
+        机器人发的消息会用'hi'开头
+        """
+        for msg in messages:
+            # 检查消息是否来自账号且内容不以 'hi' 开头
+            if msg.from_source == "account" and not msg.content.startswith('hi'):
+                # 检查账号昵称是否在允许的列表中
+                if msg.sender in ACCOUNT_NICK_NAME_LIST:
+                    print(f"检测到人工介入消息: {msg.content} 来自账号: {msg.sender}")
+                    return True
+                
+        return False
+
+
+
+
+    def _preprocess_messages(self, messages: List[MessageData]):
+        """
+        预处理消息，过滤掉无效或重复的消息
+        Args:
+            messages: 消息列表
+        Returns:
+            List[MessageData]: 预处理后的消息列表
+        """
+        if not messages:
+            return []
+        
+        message_ids = [msg.message_id for msg in messages]
+
+        # 查询已存在的消息
+        existing_messages = self.db.query(DBMessage.message_id).filter(
+            DBMessage.message_id.in_(message_ids)
+        ).all()
+        existing_message_ids = {msg.message_id for msg in existing_messages}
+
+        return [msg for msg in messages if msg.message_id not in existing_message_ids]
+
+            
+
     def should_create_new_session(
         self,
         account_id: str,
-        shop_id: str,
-        new_message: MessageData,
+        shop_id: Optional[str],
+        new_messages: List[MessageData],
         max_inactive_minutes: int = 30,
     ) -> tuple[bool, str | None]:
         """
@@ -36,9 +183,13 @@ class SessionManager:
             max_inactive_minutes: 最大非活跃时间（分钟）
 
         Returns:
-            tuple[bool, Optional[str]]: (是否创建新会话, 现有会话ID或None)
+            tuple[bool, Optional[str], Optional[str]]: (是否创建新会话, 现有会话ID或None)
         """
-        # 查找该账号-店铺组合的唯一活跃会话
+        if not shop_id:
+            # 如果没有店铺ID，直接创建新会话
+            return True, None
+
+        # 查找该账号-店铺组合的唯一活跃会话(ACTIVE或TRANSFERRED状态)
         active_session = self._find_active_session(account_id, shop_id)
 
         # 没有活跃会话，创建新会话
@@ -49,14 +200,10 @@ class SessionManager:
         time_since_last_activity = datetime.now() - active_session.last_activity
         if time_since_last_activity > timedelta(minutes=max_inactive_minutes):
             # 会话超时，创建新会话
+            active_session.state = SessionState.TIMEOUT
             return True, None
         
-        # 检查会话状态
-        if active_session.state == SessionState.COMPLETED:
-            # 已完成的会话，创建新会话
-            return True, None
-        
-        # 加入现有会话
+        # 有活跃会话且未超时，加入现有会话
         return False, active_session.session_id
     
     def create_session(self, session_info: SessionInfo) -> str:

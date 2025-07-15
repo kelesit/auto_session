@@ -79,13 +79,47 @@ class SessionInfo:
     transfer_reason: Optional[str] = None
 
 
+class RawMessage:
+    """原始消息数据
+    {
+    'shopname': '精品浴缸店', 
+    'messages': [
+        {
+            'id': '3587452118761.PNM', 
+            'nick': 't-2217567810350-0', 
+            'time':'2025-07-03 10:45:16', 
+            'content': '平台交易号:2807802123905538788,您好，请问订单的发货时间能否确定？07 
+    月06日前可以发货吗? 如果近期无法确定我们只能申请退款处理。'
+        }, 
+        {
+            'id': '3595269819313.PNM', 
+            'nick': 'tb5637469_2011', 
+            'time': '2025-07-03 10:45:34', 
+            'content': '可以的，今天发'
+        }
+        ]
+    }
+    """
+    shop_name: str
+    messages: List[Dict[str, Any]]  # 每条消息包含 id, nick, time, content
+
+
+
 @dataclass
 class MessageData:
-    """消息数据"""
+    """消息数据
+    {
+        'id': '3557925002486.PNM', 
+        'nick': 't-2217567810350-0', 
+        'time': '2025-06-11 14: 41: 58', 
+        'content': '平台交易号: 2603865144931538788,你好，请问最快什么时候发货，6月14日前可以发货吗？'
+    }"""
     message_id: str
     content: str
     from_source: str  # "shop" or "account"
     sent_at: datetime
+    
+    sender: Optional[str] = None  # 发送者昵称
     platform_data: Optional[Dict[str, Any]] = None
 
 
@@ -124,7 +158,7 @@ class ProcessResult:
     processed_messages: int = 0
     skipped_messages: int = 0
     active_session_id: Optional[str] = None
-    session_operations: List[Dict[str, Any]] = None
+    session_operations: List[str, Any] = None
     errors: List[str] = None
     
     def __post_init__(self):
