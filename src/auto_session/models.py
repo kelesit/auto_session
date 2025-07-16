@@ -122,6 +122,13 @@ class MessageData:
     sender: Optional[str] = None  # 发送者昵称
     platform_data: Optional[Dict[str, Any]] = None
 
+    def __str__(self):
+        """格式化输出"""
+        time_str = self.sent_at.strftime("%Y-%m-%d %H:%M:%S")
+        sender_info = f" [{self.sender}]" if self.sender else ""
+        return f"[{time_str}] {self.from_source}{sender_info}: {self.content}"
+    
+
 
 @dataclass
 class SessionCreationResult:
@@ -158,7 +165,7 @@ class ProcessResult:
     processed_messages: int = 0
     skipped_messages: int = 0
     active_session_id: Optional[str] = None
-    session_operations: List[str, Any] = None
+    session_operations: List[str] = None
     errors: List[str] = None
     
     def __post_init__(self):

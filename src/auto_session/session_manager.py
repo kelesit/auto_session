@@ -66,13 +66,17 @@ class SessionManager:
                         state=SessionState.TRANSFERRED,
                         created_by="human",
                         priority=1,  # 默认优先级
-                        message_count=len(processed_messages),
+                        message_count=0,  # 初始为0，添加消息时会更新
                     )
                 )
                 result.active_session_id = session_id
+                
+                # 将消息添加到新创建的会话
+                for msg in processed_messages:
+                    self.add_message_to_session(session_id, msg)
+                
                 print(f"✓ 创建新会话: {session_id}")
                 send_notification(messages, shop_id,shop_name, account_id)
-                print(f"发送通知给{account_id}")
 
             else:
                 existing_session = self._get_session(existing_session_id)
@@ -82,15 +86,13 @@ class SessionManager:
                     for msg in processed_messages:
                         self.add_message_to_session(existing_session.session_id, msg)
 
-                    # 更新会话状态和统计信息
-                    existing_session.message_count += len(processed_messages)
+                    # 更新会话统计信息（不重复计数，因为add_message_to_session已经增加了）
                     existing_session.last_activity = datetime.now()
                     result.active_session_id = existing_session.session_id
 
                     if existing_session.state == SessionState.TRANSFERRED:
                         # 如果现有会话是人工处理状态
                         send_notification(messages, shop_id,shop_name, account_id)
-                        print(f"发送通知给{account_id}")
                         result.session_operations = ["加入现有的人工会话"]
 
                     else:
@@ -106,7 +108,6 @@ class SessionManager:
                             else:
                                 result.session_operations = ["转交给人工处理"]
                                 send_notification(messages, shop_id,shop_name, account_id)
-                                print(f"发送通知给{account_id}")
 
                         else:
                             # 没有人工介入，继续处理机器人任务
@@ -263,7 +264,10 @@ class SessionManager:
 
         session.message_count += 1
         session.last_activity = message.sent_at
-        session.state = SessionState.ACTIVE
+        if session.state == SessionState.PENDING:
+            # 只有当会话是 PENDING 状态时才激活
+            session.state = SessionState.ACTIVE
+
 
         self.db.commit()
         return True
