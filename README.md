@@ -27,7 +27,7 @@
 
 #### 1. SessionManager (会话管理器)
 **职责**: 会话生命周期管理和冲突检测
-- ✅ 批量消息处理和会话关联
+- ✅ 消息组处理和会话关联
 - ✅ 会话冲突检测和解决
 - ✅ 会话状态转换管理
 - ✅ 超时处理和清理
@@ -42,7 +42,7 @@
 #### 3. API Layer (接口层)
 **职责**: 对外提供RESTful API服务
 - ✅ 会话任务CRUD操作
-- ✅ 消息批量处理接口
+- ✅ 消息组处理接口
 - ✅ Redis任务队列API
 - ✅ 状态查询和监控
 
@@ -68,7 +68,7 @@
    └── 更新会话状态为ACTIVE
 
 5. RPA接收器收集消息 → POST /api/messages/batch
-   ├── 批量上传对话记录
+   ├── 上传消息组对话记录
    └── 会话分析
         └── 判断是否存在活跃会话 
             ├── 如果不存在，创建新的TRANSFERRED会话（人工会话），并发送提醒
@@ -133,7 +133,7 @@ python tests/test_api.py
 
 # 运行特定测试
 python tests/test_api.py --test create     # 测试会话创建
-python tests/test_api.py --test messages  # 测试消息批量处理
+python tests/test_api.py --test messages  # 测试消息组处理
 python tests/test_api.py --test redis     # 测试Redis队列
 ```
 
@@ -141,7 +141,7 @@ python tests/test_api.py --test redis     # 测试Redis队列
 - ✅ 健康检查和基础API
 - ✅ 会话任务创建和冲突检测
 - ✅ Redis任务队列操作
-- ✅ 消息批量处理
+- ✅ 消息组处理
 - ✅ 会话状态查询和完成
 - ✅ 错误处理和边界情况
 - ✅ 并发操作和性能测试
@@ -233,6 +233,6 @@ CREATE TABLE messages (
 **解决**: 检查Redis服务状态，确认配置正确
 
 #### 3. 消息处理延迟
-**现象**: 批量消息处理响应慢
-**解决**: 检查数据库性能，优化消息批次大小
+**现象**: 消息组处理响应慢
+**解决**: 检查数据库性能，优化消息组大小
 

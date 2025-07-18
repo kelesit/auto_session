@@ -53,7 +53,7 @@ class SessionTaskCreateRequest(BaseModel):
     external_task_id: str = Field(..., description="外部任务ID")
     send_content: str = Field(..., description="发送内容")
     platform: str = Field("淘天", description="平台类型")
-    level: int = Field(3, description="优先级")
+    level: str = Field('level3', description="优先级")
     send_url: Optional[str] = Field(None, description="发送URL")
     max_inactive_minutes: int = Field(120, description="最大非活跃时间(分钟)")
 

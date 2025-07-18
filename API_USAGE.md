@@ -16,7 +16,7 @@ Content-Type: application/json
   "external_task_id": "ext_task_001",
   "send_content": "您好，这个商品可以再便宜点吗？",
   "platform": "淘天",
-  "level": 3,
+  "level": ‘level3’,
   "max_inactive_minutes": 120
 }
 ```
@@ -189,62 +189,5 @@ GET /health
 {
   "status": "healthy", 
   "timestamp": "2025-07-18T10:00:00"
-}
-```
-
-### 2. 获取会话状态
-```http
-GET /api/sessions/{session_id}/status
-```
-
-**响应示例**:
-```json
-{
-  "success": true,
-  "message": "获取会话状态成功",
-  "data": {
-    "session_id": "sess_12345",
-    "external_task_id": "ext_task_001",
-    "task_type": "auto_bargain",
-    "task_status": 0,
-    "session_state": "active",
-    "created_at": "2025-07-18T10:00:00",
-    "account_id": "test_account_001",
-    "priority": 3,
-    "message_count": 5,
-    "last_activity": "2025-07-18T10:05:00"
-  }
-}
-```
-
-### 3. 获取待处理任务
-```http
-GET /api/tasks/pending?limit=10
-```
-
-**响应示例**:
-```json
-{
-  "success": true,
-  "message": "获取待处理任务成功",
-  "data": {
-    "tasks": [
-      {
-        "task_id": 123,
-        "session_id": "sess_12345",
-        "external_task_id": "ext_task_001",
-        "task_type": "auto_bargain",
-        "task_status": 0,
-        "send_content": "您好，这个商品可以再便宜点吗？",
-        "created_at": "2025-07-18T10:00:00",
-        "account_id": "test_account_001",
-        "shop_id": "shop_12345",
-        "session_state": "pending",
-        "priority": 3
-      }
-    ],
-    "count": 1,
-    "limit": 10
-  }
 }
 ```

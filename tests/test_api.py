@@ -112,7 +112,7 @@ class AutoSessionAPITester:
             "external_task_id": f"ext_task_{int(time.time())}",
             "send_content": "您好，这个商品可以再便宜点吗？我是长期客户。",
             "platform": "淘天",
-            "level": 3,
+            "level": 'level3',
             "max_inactive_minutes": 120
         }
         
@@ -335,7 +335,7 @@ class AutoSessionAPITester:
             "external_task_id": f"ext_task_fail_{int(time.time())}",
             "send_content": "测试失败场景",
             "platform": "淘天",
-            "level": 3,
+            "level": 'level3',
             "max_inactive_minutes": 120
         }
         
@@ -442,7 +442,7 @@ class AutoSessionAPITester:
                 "external_task_id": f"concurrent_task_{task_id}",
                 "send_content": f"并发测试消息 {task_id}",
                 "platform": "淘天",
-                "level": 3,
+                "level": 'level3',
                 "max_inactive_minutes": 120
             }
             return self.make_request("POST", "/api/sessions/create", data)

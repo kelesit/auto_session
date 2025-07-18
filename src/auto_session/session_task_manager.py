@@ -32,7 +32,7 @@ from .session_manager import SessionManager
 from .config import Config
 from .utils.tools import get_send_info_by_external_task
 
-LEVEL_LIST = ["level5", "level4", "level3", "level2", "level1"]
+LEVEL_LIST = ["level5", "level4", "level3", "level2", "level1"] # 级别越高越优先
 
 class SessionTaskManager:
     """会话任务管理器"""
