@@ -18,8 +18,10 @@ from sqlalchemy import(
 )
 from sqlalchemy import (
     Enum as SQLEnum,
+    Column,
+    DECIMAL
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 from .models import TaskType, SessionState, TransferStatus, UrgencyLevel
 
@@ -36,7 +38,7 @@ class DBAccount(Base):
     account_id: Mapped[str] = mapped_column(
         String(50), unique=True, nullable=False, index=True
     )
-    account_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    account_name: Mapped[str] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     platform: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -52,7 +54,7 @@ class DBShop(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     shop_id: Mapped[str] = mapped_column(
-        String(50), unique=True, nullable=False, index=True
+        String(50), unique=True, nullable=True, index=True
     )
     shop_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -61,6 +63,8 @@ class DBShop(Base):
     sessions: Mapped[list["DBSession"]] = relationship(
         "DBSession", back_populates="shop"
     )
+
+
 
 class DBSession(Base):
     """会话表 - 核心表"""
@@ -74,8 +78,8 @@ class DBSession(Base):
     account_id: Mapped[str] = mapped_column(
         String(50), ForeignKey("accounts.account_id"), nullable=False
     )
-    shop_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("shops.shop_id"), nullable=False
+    shop_name: Mapped[str] = mapped_column(
+        String(50), ForeignKey("shops.shop_name"), nullable=False
     )
 
     # 会话核心信息
@@ -104,7 +108,7 @@ class DBSession(Base):
     # 索引优化
     __table_args__ = (
         # 使用 SQLAlchemy 的 Index 对象
-        Index('idx_account_shop_state', 'account_id', 'shop_id', 'state'),
+        Index('idx_account_shop_state', 'account_id', 'shop_name', 'state'),
         Index('idx_last_activity', 'last_activity'),
         Index('idx_external_task_id', 'external_task_id'),
         Index('idx_priority_state', 'priority', 'state'),
@@ -242,6 +246,77 @@ class DBSessionOperation(Base):
     # 关联关系
     session: Mapped["DBSession"] = relationship("DBSession", back_populates="operations")
 
+class DBSessionTask(Base):
+    """会话任务表"""
+    __tablename__ = "session_tasks"
+    id = mapped_column(Integer, primary_key=True, autoincrement=True)
+    external_task_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="外部任务类型"
+    )
+    external_task_id: Mapped[str] = mapped_column(
+        String(256), nullable=False, comment="外部任务ID"
+    )
+    task_created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, comment="任务创建时间"    )
+    task_finished_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, comment="任务完成时间"
+    )
+    task_status: Mapped[str] = mapped_column(
+        Integer, nullable=False, comment="任务状态，0: 未开始, 1: 已完成, 2: 跳过"
+    )
+    send_content: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="发送内容"
+    )
+    session_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("sessions.session_id"), nullable=False, comment="关联会话ID"
+    )
+
+    __table___args__ = (
+        Index('idx_session_id', 'session_id'),
+    )
+
+
+# ======= 上游任务 =======
+## 不可随意修改，必须与上游系统保持一致
+class DBBargainTask(Base):
+    """砍价任务表"""
+    __tablename__ = 'bargain_task'
+    # 基本属性
+    # cpmaso 信息
+    ## 交易详情
+    cpmaso_trade_id = Column(Integer,primary_key=True, nullable=False, comment='交易记录ID')
+    trade_status = Column(Integer, nullable=False, default=0, comment='交易状态 0: 新交易，待付款 1:已提交，待审核')
+    trade_no = Column(String(64), nullable=False, comment='交易号')
+    trade_platform_order_id = Column(String(64), nullable=False, comment='交易平台订单号')
+    buy_no = Column(Integer, nullable=False, comment='采购单号')
+    add_time = Column(DateTime, nullable=True, comment='添加时间')
+    cpmaso_account = Column(String(256), nullable=True,comment='CPMASO指派人员和账号')
+    store_id = Column(Integer, nullable=False, comment='店铺ID')
+    platform = Column(String(64), nullable=False, comment='交易平台')
+    
+    ## 订单商品详情信息
+    product_main_id = Column(String(256), nullable=True, comment='货源主单号')
+    product_sub_id = Column(String(256), nullable=True, comment='货源子单号')
+    buy_id = Column(String(256), nullable=True, comment='采购ID')
+    buy_person = Column(String(256), nullable=True, comment='采购人')
+    shop_name = Column(String(256), nullable=True, comment='店铺名称')
+    product_price = Column(DECIMAL(10, 2), nullable=True, comment='商品原价')
+    logistics_price = Column(DECIMAL(10, 2), nullable=True, comment='物流价格')
+    original_price = Column(DECIMAL(10, 2), nullable=True, comment='原始价格,商品原价+物流价格')
+
+    # 任务状态
+    update_time = Column(DateTime, nullable=False, default=datetime.now, comment='更新时间')
+    task_status = Column(Integer, nullable=False, default=0, comment='任务状态 0:未开始 1:进行中 2:已完成 3:已取消')
+    last_offer_price = Column(DECIMAL(10, 2), nullable=True, comment='最新报价')
+    final_price = Column(DECIMAL(10, 2), nullable=True, comment='最终成交价=最新报价+物流价格')
+    upload_cpmaso = Column(Integer, nullable=False, default=0, comment='是否上传到CPMASO 0:未上传 1:已上传')
+
+    # 关联对话任务属性
+    last_chat_id = Column(Integer, nullable=True, comment='最后对话ID')
+
+
+
+
+
 def create_database_url(
     host: str = "192.168.100.33",
     port: int = 3306,
@@ -265,3 +340,9 @@ def get_engine(database_url: str):
         pool_pre_ping=True,  # 连接池预检查
         pool_recycle=3600,  # 连接回收时间（秒）
     )
+
+def get_db_session():
+    """获取数据库会话"""
+    engine = get_engine(create_database_url())
+    Session = sessionmaker(bind=engine)
+    return Session()

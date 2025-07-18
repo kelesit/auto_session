@@ -1,9 +1,8 @@
 """
 会话管理器 - 核心业务逻辑
 
-实现两个核心功能：
-1. 判断新聊天记录是否应该创建新会话还是加入现有会话
-2. 判断某个店铺-账号组合是否可以创建新的机器人会话
+核心功能：
+批量接收消息，处理消息并更新会话状态，形成完整的会话生命周期管理
 """
 
 from typing import List, Optional, Tuple
@@ -11,8 +10,8 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from .database import DBAccount, DBMessage, DBSession, DBShop
-from .models import MessageData, SessionInfo, SessionState, TaskType, ProcessResult
-from .tools import send_notification
+from .models import MessageData, SessionInfo, SessionState, TaskType, ProcessResult, SessionCreationResult, AvailabilityResult
+from .utils.tools import send_notification
 
 ACCOUNT_NICK_NAME_LIST = [
     't-2217567810350-0',  # 示例账号昵称
@@ -24,12 +23,170 @@ class SessionManager:
 
     def __init__(self, db_session: Session):
         self.db = db_session
+        self.max_inactive_minutes = 120  # 默认最大非活跃时间为120分钟
+
+    def can_create_robot_session(
+        self, account_id: str, shop_name: str = "", 
+        task_type: TaskType = TaskType.AUTO_BARGAIN,
+        max_inactive_minutes: Optional[int] = None
+    ) -> AvailabilityResult:
+        """
+        判断是否可以为指定店铺-账号组合创建新的机器人会话
+        Args:
+            account_id: 账号ID
+            shop_name: 店铺名称
+            task_type: 任务类型（默认为机器人任务）
+        Returns:
+            AvailabilityResult: 可用性结果
+        """
+        # 使用实例默认值
+        if max_inactive_minutes is None:
+            max_inactive_minutes = self.max_inactive_minutes
+        
+        # 验证参数
+        if not shop_name:
+            return AvailabilityResult(
+                available=False,
+                error_message="shop_name 不能为空"
+            )
+        
+        if not self._is_robot_task(task_type):
+            return AvailabilityResult(
+                available=False,
+                error_message=f"任务类型 {task_type} 不是机器人任务"
+            )
+        
+        
+        # 查找当前活跃会话
+        active_session = self._find_active_session(account_id, shop_name)
+        
+        if not active_session:
+            # 没有活跃会话，可以创建机器人会话
+            return AvailabilityResult(
+                available=True,
+                current_session_id=None,
+                current_session_type=None
+            )
+        
+        # 检查当前会话状态
+        current_state = active_session.state
+        current_task_type = active_session.task_type
+
+        # 如果当前是人工会话，不能创建机器人会话
+        if current_state == SessionState.TRANSFERRED:
+            return AvailabilityResult(
+                available=False,
+                current_session_id=active_session.session_id,
+                current_session_type=current_task_type,
+                error_message=f"当前有人工会话{active_session.session_id}正在处理中，无法创建机器人会话"
+            )
+        
+        # 检查会话是否超时
+        time_since_last_activity = datetime.now() - active_session.last_activity
+        if time_since_last_activity > timedelta(minutes=max_inactive_minutes):
+            # 会话已超时，可以创建新的机器人会话
+            # 先将超时会话标记为TIMEOUT
+            active_session.state = SessionState.TIMEOUT
+            self.db.commit()
+            
+            return AvailabilityResult(
+                available=True,
+                current_session_id=None,
+                current_session_type=None,
+                estimated_available_at=datetime.now()
+            )
+        
+        # 如果当前是机器人会话且未超时
+        if current_state == SessionState.ACTIVE and self._is_robot_task(current_task_type):
+            return AvailabilityResult(
+                available=False,
+                current_session_id=active_session.session_id,
+                current_session_type=current_task_type,
+                error_message=f"当前有活跃的机器人会话{active_session.session_id}，无法创建新的机器人会话"
+            )
+        
+        return AvailabilityResult(
+            available=False,
+            current_session_id=active_session.session_id,
+            current_session_type=current_task_type,
+            error_message=f"当前会话状态为 {current_state}，无法创建新的机器人会话"
+        )
+
+        
+
+    def create_robot_session(
+        self, account_id: str, 
+        shop_name: str, 
+        task_type: TaskType = TaskType.AUTO_BARGAIN,
+        external_task_id: Optional[str] = None,
+        max_inactive_minutes: int = 30,
+    ) -> SessionCreationResult:
+        """
+        接收会话创建任务，尝试创建机器人会话 - 核心功能
+
+        Args:
+            account_id: 账号ID
+            task_type: 任务类型（必须是机器人任务）
+            external_task_id: 外部任务ID
+            max_inactive_minutes: 最大非活跃时间（分钟）
+            
+        Returns:
+            SessionCreationResult: 会话创建结果
+        """
+        # 使用实例默认值
+        if max_inactive_minutes is None:
+            max_inactive_minutes = self.max_inactive_minutes
+        
+        availability = self.can_create_robot_session(
+            account_id=account_id,
+            shop_name=shop_name,
+            task_type=task_type,
+            max_inactive_minutes=max_inactive_minutes
+        )
+
+        if not availability.available:
+            return SessionCreationResult(
+                success=False,
+                error_code="UNAVAILABLE",
+                error_message=availability.error_message,
+                conflict_session_id=availability.current_session_id
+            )
+        
+        try:
+            session_info = SessionInfo(
+                session_id=self._generate_session_id(),
+                account_id=account_id,
+                shop_name=shop_name,
+                task_type=task_type,
+                state=SessionState.PENDING, # 机器人会话开始时为PENDING，此时还未发送第一条消息
+                created_by="robot",
+                priority=self._get_task_priority(task_type),
+                external_task_id=external_task_id,
+                message_count=0,  # 初始为0，添加消息时会更新
+                created_at=datetime.now(),
+                last_activity=datetime.now(),
+            )
+            session_id = self.create_session(session_info)
+
+            return SessionCreationResult(
+                success=True,
+                session_id=session_id,
+                error_code=None,
+                error_message=None,
+            )
+        except Exception as e:
+            return SessionCreationResult(
+                success=False,
+                error_code="CREATE_FAILED",
+                error_message=str(e),
+            )
+
+
 
     def process_message_batch(
         self,
         messages: list[MessageData],
         account_id: str,
-        shop_id: Optional[str],
         shop_name: str,
         max_inactive_minutes: int = 30,
     ):
@@ -38,7 +195,7 @@ class SessionManager:
         Args:
             messages: 消息列表
             account_id: 账号ID
-            shop_id: 店铺ID
+            shop_name: 店铺名称
             max_inactive_minutes: 最大非活跃时间（分钟）
         Returns:
             ProcessResult: 处理结果
@@ -53,7 +210,7 @@ class SessionManager:
 
 
             should_create, existing_session_id = self.should_create_new_session(
-                account_id, shop_id, processed_messages, max_inactive_minutes
+                account_id, processed_messages, max_inactive_minutes
             )
             if should_create:
                 # 创建新会话
@@ -61,7 +218,7 @@ class SessionManager:
                     SessionInfo(
                         session_id=self._generate_session_id(),
                         account_id=account_id,
-                        shop_id=shop_id,
+                        shop_name=shop_name,
                         task_type=TaskType.MANUAL_URGENT,   # 会话类型为人工
                         state=SessionState.TRANSFERRED,
                         created_by="human",
@@ -76,7 +233,7 @@ class SessionManager:
                     self.add_message_to_session(session_id, msg)
                 
                 print(f"✓ 创建新会话: {session_id}")
-                send_notification(messages, shop_id,shop_name, account_id)
+                send_notification(messages,shop_name, account_id)
 
             else:
                 existing_session = self._get_session(existing_session_id)
@@ -92,7 +249,7 @@ class SessionManager:
 
                     if existing_session.state == SessionState.TRANSFERRED:
                         # 如果现有会话是人工处理状态
-                        send_notification(messages, shop_id,shop_name, account_id)
+                        send_notification(messages, shop_name, account_id)
                         result.session_operations = ["加入现有的人工会话"]
 
                     else:
@@ -107,7 +264,7 @@ class SessionManager:
                                 result.errors = [f"会话{existing_session.session_id}转人工失败"]
                             else:
                                 result.session_operations = ["转交给人工处理"]
-                                send_notification(messages, shop_id,shop_name, account_id)
+                                send_notification(messages, shop_name, account_id)
 
                         else:
                             # 没有人工介入，继续处理机器人任务
@@ -165,12 +322,21 @@ class SessionManager:
 
         return [msg for msg in messages if msg.message_id not in existing_message_ids]
 
+    def _is_robot_task(self, task_type: TaskType) -> bool:
+        """判断是否为机器人任务"""
+        return task_type.value.startswith('auto_')
+    
+    def _get_task_priority(self, task_type: TaskType) -> int:
+        """获取任务优先级"""
+        from .models import TASK_TYPE_PRIORITY, Priority
+        return TASK_TYPE_PRIORITY.get(task_type, Priority.LOW).value
+
             
 
     def should_create_new_session(
         self,
         account_id: str,
-        shop_id: Optional[str],
+        shop_name: Optional[str],
         new_messages: List[MessageData],
         max_inactive_minutes: int = 30,
     ) -> tuple[bool, str | None]:
@@ -179,19 +345,19 @@ class SessionManager:
 
         Args:
             account_id: 账号ID
-            shop_id: 店铺ID
+            shop_name: 店铺名称
             new_message: 新消息信息
             max_inactive_minutes: 最大非活跃时间（分钟）
 
         Returns:
             tuple[bool, Optional[str], Optional[str]]: (是否创建新会话, 现有会话ID或None)
         """
-        if not shop_id:
+        if not shop_name:
             # 如果没有店铺ID，直接创建新会话
             return True, None
 
         # 查找该账号-店铺组合的唯一活跃会话(ACTIVE或TRANSFERRED状态)
-        active_session = self._find_active_session(account_id, shop_id)
+        active_session = self._find_active_session(account_id, shop_name)
 
         # 没有活跃会话，创建新会话
         if not active_session:
@@ -219,12 +385,12 @@ class SessionManager:
             str: 新创建的会话ID
         """
         # 先完成该账号-店铺组合下的所有现有活跃会话
-        self._complete_existing_sessions(session_info.account_id, session_info.shop_id)
+        self._complete_existing_sessions(session_info.account_id, session_info.shop_name)
 
         new_session = DBSession(
             session_id=session_info.session_id,
             account_id=session_info.account_id,
-            shop_id=session_info.shop_id,
+            shop_name=session_info.shop_name,
             task_type=session_info.task_type,
             state=session_info.state,
             created_by=session_info.created_by,
@@ -304,18 +470,18 @@ class SessionManager:
         self.db.commit()
         return True
     
-    def get_session_status(self, account_id: str, shop_id: str) -> dict:
+    def get_session_status(self, account_id: str, shop_name: str) -> dict:
         """
         获取账号-店铺组合的会话状态
 
         Args:
             account_id: 账号ID
-            shop_id: 店铺ID
+            shop_name: 店铺名称
 
         Returns:
             dict: 会话状态信息
         """
-        active_session = self._find_active_session(account_id, shop_id)
+        active_session = self._find_active_session(account_id, shop_name)
         if not active_session:
             return {
                 "has_active_session": False,
@@ -335,7 +501,7 @@ class SessionManager:
             "last_activity": active_session.last_activity,
         }
     
-    def _find_active_session(self, account_id: str, shop_id: str) -> DBSession | None:
+    def _find_active_session(self, account_id: str, shop_name: str) -> DBSession | None:
         """
         查找该账号-店铺组合的唯一活跃会话
         """
@@ -343,14 +509,14 @@ class SessionManager:
             self.db.query(DBSession)
             .filter(
                 DBSession.account_id == account_id,
-                DBSession.shop_id == shop_id,
+                DBSession.shop_name == shop_name,
                 DBSession.state.in_([SessionState.ACTIVE, SessionState.TRANSFERRED]),
             )
             .order_by(DBSession.last_activity.desc())
             .first()
         )
     
-    def _complete_existing_sessions(self, account_id: str, shop_id: str):
+    def _complete_existing_sessions(self, account_id: str, shop_name: str):
         """
         完成该账号-店铺组合下的所有现有活跃会话
         确保只有一个活跃会话的约束
@@ -360,7 +526,7 @@ class SessionManager:
             self.db.query(DBSession)
             .filter(
                 DBSession.account_id == account_id,
-                DBSession.shop_id == shop_id,
+                DBSession.shop_name == shop_name,
                 DBSession.state.in_(active_states),
             )
             .all()
@@ -394,14 +560,26 @@ def create_session_manager(db_session: Session) -> SessionManager:
     return SessionManager(db_session)
 
 
-def ensure_account_exists(db_session: Session, account_id: str, account_name: str, platform: str = "default"):
+def ensure_account_exists(db_session: Session, account_id: str, account_name: Optional[str] = None, platform: str = "default"):
     """确保账号存在"""
-    existing = (
-        db_session.query(DBAccount)
-        .filter(DBAccount.account_id == account_id)
-        .first()
-    )
-    if not existing:
+    # 参数验证
+    if not account_id or not account_id.strip():
+        raise ValueError("account_id不能为空")
+    
+    account_id = account_id.strip()
+    
+    try:
+        existing = db_session.query(DBAccount).filter(DBAccount.account_id == account_id
+        ).first()
+
+        if existing:
+            # 如果账号已存在，但传入了新的account_name，更新它
+            if account_name and account_name != existing.account_name:
+                existing.account_name = account_name.strip()
+                existing.platform = platform
+            return existing
+        
+        # 创建新账号
         account = DBAccount(
             account_id=account_id,
             account_name=account_name,
@@ -410,17 +588,37 @@ def ensure_account_exists(db_session: Session, account_id: str, account_name: st
             platform=platform,  # 默认平台
         )
         db_session.add(account)
-        db_session.commit()
+        return account
+    except Exception as e:
+        print(f"创建账号失败: {account_id}, 错误: {e}")
+        raise
 
 
-def ensure_shop_exists(db_session: Session, shop_id: str, shop_name: str):
+def ensure_shop_exists(db_session: Session, shop_name: str, shop_id: Optional[str] = None):
     """确保店铺存在"""
-    existing = db_session.query(DBShop).filter(DBShop.shop_id == shop_id).first()
-    if not existing:
+    if not shop_name or not shop_name.strip():
+        raise ValueError("shop_name不能为空")
+    
+    shop_name = shop_name.strip()
+
+    try:
+        existing = db_session.query(DBShop).filter(DBShop.shop_name == shop_name).first()
+        if existing:
+            # 如果店铺已存在，但传入了新的shop_id，更新它
+            if shop_id and shop_id != existing.shop_id:
+                existing.shop_id = shop_id
+                # 不在这里commit，让调用者控制事务
+            return existing
+
+        # 创建新店铺
         shop = DBShop(
-            shop_id=shop_id,
             shop_name=shop_name,
-            created_at=datetime.now(),
+            shop_id=shop_id,  # 直接赋值，None也可以
+            created_at=datetime.now()
         )
         db_session.add(shop)
-        db_session.commit()
+        return shop
+
+    except Exception as e:
+        print(f"创建店铺失败: {shop_name}, 错误: {e}")
+        raise

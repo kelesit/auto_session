@@ -9,4 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
-readm.md
+
+# Logs
+logs/
+
+tests/test_results

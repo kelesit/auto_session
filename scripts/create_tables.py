@@ -119,9 +119,9 @@ def upgrade_existing_database():
 
 
 if __name__ == "__main__":
-    upgrade_existing_database()
-    # success = recreate_all_tables()
-    # if success:
-    #     print("\n✅ 脚本执行成功，数据库表创建完毕！")
-    # else:
-    #     print("\n❌ 脚本执行失败，请检查错误信息。")
+    # upgrade_existing_database()
+    success = recreate_all_tables()
+    if success:
+        print("\n✅ 脚本执行成功，数据库表创建完毕！")
+    else:
+        print("\n❌ 脚本执行失败，请检查错误信息。")

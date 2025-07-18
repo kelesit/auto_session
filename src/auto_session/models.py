@@ -65,7 +65,7 @@ class SessionInfo:
     """会话信息"""
     session_id: str
     account_id: str
-    shop_id: str
+    shop_name: str
     task_type: TaskType
     state: SessionState
     created_by: str  # "robot" or "human"
@@ -78,49 +78,27 @@ class SessionInfo:
     transferred_at: Optional[datetime] = None
     transfer_reason: Optional[str] = None
 
-
+@dataclass
 class RawMessage:
     """原始消息数据
     {
-    'shopname': '精品浴缸店', 
-    'messages': [
-        {
-            'id': '3587452118761.PNM', 
-            'nick': 't-2217567810350-0', 
-            'time':'2025-07-03 10:45:16', 
-            'content': '平台交易号:2807802123905538788,您好，请问订单的发货时间能否确定？07 
-    月06日前可以发货吗? 如果近期无法确定我们只能申请退款处理。'
-        }, 
-        {
-            'id': '3595269819313.PNM', 
-            'nick': 'tb5637469_2011', 
-            'time': '2025-07-03 10:45:34', 
-            'content': '可以的，今天发'
-        }
-        ]
-    }
-    """
-    shop_name: str
-    messages: List[Dict[str, Any]]  # 每条消息包含 id, nick, time, content
-
-
+        'id': '3557925002486.PNM', 
+        'nick': 't-2217567810350-0', 
+        'time': '2025-06-11 14:41:58', 
+        'content': '平台交易号: 2603865144931538788,你好，请问最快什么时候发货，6月14日前可以发货吗？'
+    }"""
+    id: str
+    nick: str
+    time: datetime
+    content: str
 
 @dataclass
 class MessageData:
-    """消息数据
-    {
-        'id': '3557925002486.PNM', 
-        'nick': 't-2217567810350-0', 
-        'time': '2025-06-11 14: 41: 58', 
-        'content': '平台交易号: 2603865144931538788,你好，请问最快什么时候发货，6月14日前可以发货吗？'
-    }"""
     message_id: str
     content: str
     from_source: str  # "shop" or "account"
     sent_at: datetime
-    
     sender: Optional[str] = None  # 发送者昵称
-    platform_data: Optional[Dict[str, Any]] = None
 
     def __str__(self):
         """格式化输出"""
@@ -157,6 +135,16 @@ class AvailabilityResult:
     current_session_id: Optional[str] = None
     current_session_type: Optional[TaskType] = None
     estimated_available_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+
+@dataclass
+class SessionCreationResult:
+    """会话创建结果"""
+    success: bool
+    session_id: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    conflict_session_id: Optional[str] = None
 
 
 @dataclass
