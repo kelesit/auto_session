@@ -11,12 +11,12 @@ class Config:
     """应用配置"""
     
     # 数据库配置
-    DATABASE_HOST: str = "192.168.100.33"
-    DATABASE_PORT: int = 3306
-    DATABASE_USER: str = "zhenggantian"
-    DATABASE_PASSWORD: str = "123456"
-    DATABASE_NAME: str = "mdm"
-    DATABASE_CHARSET: str = "utf8mb4"
+    DATABASE_HOST: str = ""
+    DATABASE_PORT: int = ""
+    DATABASE_USER: str = ""
+    DATABASE_PASSWORD: str = ""
+    DATABASE_NAME: str = ""
+    DATABASE_CHARSET: str = ""
     
     # Redis配置
     REDIS_HOST: str = "192.168.100.44"
@@ -38,16 +38,16 @@ class Config:
     ### 淘天
     # 账号昵称列表（用于消息处理）
     ACCOUNT_NICK_NAMES: List[str] = field(default_factory=lambda: [
-        't-2217567810350-0',    # 贝勤国际有限公司:chanpin01
-        't-2220262859798-0',    # 贝勤国际有限公司:chanpin13
+        't-2217567810350-0',    # 
+        't-2220262859798-0',    # 
 
-        't-2217640538887-0',    # 贝勤国际有限公司:gendan01
+        't-2217640538887-0',    # 
         
-        't-2217525684881-0',   # 贝勤国际有限公司:caigou01
-        't-2217644064498-0',   # 贝勤国际有限公司:caigou12
-        't-2217655997959-0',    # 贝勤国际有限公司:caigou15
-        't-2217683614335-0',    # 贝勤国际有限公司:caigou16
-        't-2217720464839-0',    # 贝勤国际有限公司:caigou19
+        't-2217525684881-0',   # 
+        't-2217644064498-0',   # 
+        't-2217655997959-0',    # 
+        't-2217683614335-0',    # 
+        't-2217720464839-0',    # 
         # 可以添加更多账号昵称
     ])
     
@@ -63,12 +63,12 @@ class Config:
     def from_env(cls):
         """从环境变量创建配置"""
         return cls(
-            DATABASE_HOST=os.getenv("DATABASE_HOST", "192.168.100.33"),
-            DATABASE_PORT=int(os.getenv("DATABASE_PORT", "3306")),
-            DATABASE_USER=os.getenv("DATABASE_USER", "zhenggantian"),
-            DATABASE_PASSWORD=os.getenv("DATABASE_PASSWORD", "123456"),
-            DATABASE_NAME=os.getenv("DATABASE_NAME", "mdm"),
-            DATABASE_CHARSET=os.getenv("DATABASE_CHARSET", "utf8mb4"),
+            DATABASE_HOST=os.getenv("DATABASE_HOST", ""),
+            DATABASE_PORT=int(os.getenv("DATABASE_PORT", "")),
+            DATABASE_USER=os.getenv("DATABASE_USER", ""),
+            DATABASE_PASSWORD=os.getenv("DATABASE_PASSWORD", ""),
+            DATABASE_NAME=os.getenv("DATABASE_NAME", ""),
+            DATABASE_CHARSET=os.getenv("DATABASE_CHARSET", ""),
             
             REDIS_HOST=os.getenv("REDIS_HOST", "192.168.100.44"),
             REDIS_PORT=int(os.getenv("REDIS_PORT", "7379")),

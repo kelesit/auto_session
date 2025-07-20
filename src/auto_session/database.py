@@ -318,12 +318,12 @@ class DBBargainTask(Base):
 
 
 def create_database_url(
-    host: str = "192.168.100.33",
+    host: str = "",
     port: int = 3306,
-    username: str = "zhenggantian",
-    password: str = "123456",
-    database: str = "mdm",
-    charset: str = "utf8mb4",
+    username: str = "",
+    password: str = "",
+    database: str = "",
+    charset: str = "",
 ) -> str:
     """创建 MySQL 数据库连接 URL"""
     return f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}?charset={charset}"
